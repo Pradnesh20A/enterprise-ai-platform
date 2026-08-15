@@ -36,10 +36,10 @@ ENV/
 .env
 
 # Data — keep directory structure, ignore contents
-data/uploads/*
-data/vector_store/*
-!data/uploads/.gitkeep
-!data/vector_store/.gitkeep
+backend/data/uploads/*
+backend/data/vector_store/*
+!backend/data/uploads/.gitkeep
+!backend/data/vector_store/.gitkeep
 
 # Docker
 docker-compose.override.yml

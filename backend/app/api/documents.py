@@ -3,7 +3,7 @@
 import uuid
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, Query, UploadFile
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -16,6 +16,7 @@ from app.schemas.document import (
     DocumentResponse,
     DocumentUploadResponse,
 )
+from app.services.document_processor import delete_document_chunks, process_document
 
 router = APIRouter(prefix="/documents", tags=["Documents"])
 logger = get_logger(__name__)
@@ -42,6 +43,7 @@ def _validate_file_type(file: UploadFile) -> str:
 
 @router.post("/upload", response_model=DocumentUploadResponse, status_code=201)
 async def upload_document(
+    background_tasks: BackgroundTasks,
     file: UploadFile = File(..., description="Document file to upload"),
     db: AsyncSession = Depends(get_db),
 ) -> DocumentUploadResponse:
@@ -98,6 +100,15 @@ async def upload_document(
     db.add(document)
     await db.flush()
     await db.refresh(document)
+
+    # Enqueue background processing (parse -> chunk -> embed -> FAISS)
+    background_tasks.add_task(
+        process_document,
+        db=db,
+        document_id=file_id,
+        file_content=content,
+        file_type=ext
+    )
 
     return DocumentUploadResponse(
         id=document.id,
@@ -168,6 +179,9 @@ async def delete_document(
 
     if not document:
         raise HTTPException(status_code=404, detail="Document not found")
+
+    # Clean up vector store and chunk DB records
+    await delete_document_chunks(db, document.id)
 
     # Remove file from disk
     file_path = Path(document.file_path)
