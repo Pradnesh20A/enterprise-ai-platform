@@ -44,8 +44,8 @@ class Document(Base):
         String(20), server_default=DocumentStatus.UPLOADED.value
     )
     page_count: Mapped[int | None] = mapped_column(Integer)
-    uploaded_by: Mapped[uuid.UUID | None] = mapped_column(
-        ForeignKey("users.id"), nullable=True
+    uploaded_by: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("users.id"), nullable=False
     )
     metadata_: Mapped[dict | None] = mapped_column(
         "metadata", JSON, comment="Flexible document metadata as JSON"
@@ -60,6 +60,9 @@ class Document(Base):
     # Relationships
     chunks: Mapped[list["DocumentChunk"]] = relationship(
         back_populates="document", cascade="all, delete-orphan"
+    )
+    user: Mapped["User"] = relationship(
+        "User", back_populates="documents"
     )
 
     def __repr__(self) -> str:

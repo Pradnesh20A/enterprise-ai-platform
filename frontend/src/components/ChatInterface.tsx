@@ -1,7 +1,11 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Send, Bot, User, FileText, ChevronDown, ChevronUp } from 'lucide-react';
-import { api, Citation } from '../api/client';
+import { api } from '../api/client';
+import type { Citation } from '../api/client';
 import { motion, AnimatePresence } from 'framer-motion';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
+import { exportConversationToMarkdown } from '../utils/export';
 
 interface Message {
   id: string;
@@ -10,7 +14,13 @@ interface Message {
   citations?: Citation[];
 }
 
-export function ChatInterface() {
+interface Props {
+  activeConversationId: string | null;
+  onNewConversation: (id: string) => void;
+  onStartNewChat: () => void;
+}
+
+export function ChatInterface({ activeConversationId, onNewConversation, onStartNewChat }: Props) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -24,6 +34,41 @@ export function ChatInterface() {
   useEffect(() => {
     scrollToBottom();
   }, [messages]);
+
+  useEffect(() => {
+    if (activeConversationId) {
+      loadConversation(activeConversationId);
+    } else {
+      setMessages([]);
+      setInput('');
+    }
+  }, [activeConversationId]);
+
+  const loadConversation = async (id: string) => {
+    try {
+      setIsLoading(true);
+      const data = await api.getConversationMessages(id);
+      const loadedMessages = data.messages.map((m: any) => ({
+        id: m.id,
+        role: m.role,
+        content: m.content,
+        citations: m.sources && Array.isArray(m.sources) ? m.sources.map((s: any) => ({
+          document_id: s.document_id || '',
+          filename: s.filename || 'Unknown Document',
+          snippet: s.content_snippet || ''
+        })) : []
+      }));
+      setMessages(loadedMessages);
+    } catch (error) {
+      console.error('Failed to load conversation:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleNewChat = () => {
+    onStartNewChat();
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -40,7 +85,22 @@ export function ChatInterface() {
     setIsLoading(true);
 
     try {
-      const response = await api.askQuestion(userMessage.content);
+      const storedPrompt = localStorage.getItem('systemPrompt');
+      const storedTemp = localStorage.getItem('temperature');
+      
+      const systemPrompt = storedPrompt || undefined;
+      const temperature = storedTemp ? parseFloat(storedTemp) : undefined;
+
+      const response = await api.askQuestion(
+        userMessage.content, 
+        activeConversationId || undefined,
+        systemPrompt,
+        temperature
+      );
+      
+      if (response.conversation_id && !activeConversationId) {
+        onNewConversation(response.conversation_id);
+      }
       
       const assistantMessage: Message = {
         id: (Date.now() + 1).toString(),
@@ -67,57 +127,109 @@ export function ChatInterface() {
     setExpandedCitation(expandedCitation === id ? null : id);
   };
 
+  const handleExport = () => {
+    if (messages.length === 0) return;
+    exportConversationToMarkdown(messages);
+  };
+
   return (
-    <div className="flex flex-col h-full">
+    <div className="chat-container">
+      {/* Chat Header */}
+      <div style={{
+        display: 'flex', 
+        justifyContent: 'space-between', 
+        alignItems: 'center', 
+        padding: '1rem', 
+        borderBottom: '1px solid rgba(255,255,255,0.05)',
+        backgroundColor: 'rgba(0,0,0,0.2)'
+      }}>
+        <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 600, color: 'var(--text-primary)' }}>
+          Enterprise AI Assistant
+        </h3>
+        <div style={{ display: 'flex', gap: '0.5rem' }}>
+          <button 
+            onClick={handleExport}
+            disabled={messages.length === 0}
+            className="btn"
+            style={{
+              padding: '0.4rem 0.8rem',
+              fontSize: '0.85rem',
+              backgroundColor: 'transparent',
+              border: '1px solid rgba(255,255,255,0.1)',
+              color: messages.length === 0 ? 'var(--text-muted)' : 'var(--text-primary)',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.4rem',
+              borderRadius: '6px',
+              cursor: messages.length === 0 ? 'not-allowed' : 'pointer'
+            }}
+            title="Export conversation as Markdown"
+          >
+            Export
+          </button>
+          <button 
+            onClick={handleNewChat}
+            className="btn"
+            style={{
+              padding: '0.4rem 0.8rem',
+              fontSize: '0.85rem',
+              backgroundColor: 'rgba(255,255,255,0.05)',
+              border: '1px solid rgba(255,255,255,0.1)',
+              color: 'var(--text-primary)',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.4rem',
+              borderRadius: '6px'
+            }}
+          >
+            <Bot size={14} /> New Chat
+          </button>
+        </div>
+      </div>
+      
       {/* Chat History */}
-      <div className="flex-1 overflow-y-auto p-8 space-y-8">
+      <div className="chat-history">
         {messages.length === 0 ? (
-          <div className="h-full flex flex-col items-center justify-center text-muted animate-fade-in">
-            <div className="w-16 h-16 rounded-2xl bg-panel flex items-center justify-center mb-4 shadow-lg border border-border">
-              <Bot size={32} className="text-accent-primary" />
+          <div className="chat-empty animate-fade-in">
+            <div className="chat-empty-icon">
+              <Bot size={32} />
             </div>
-            <h2 className="text-2xl font-semibold text-primary mb-2">Enterprise AI Assistant</h2>
-            <p className="max-w-md text-center text-sm">
+            <h2 style={{color: 'var(--text-primary)', marginBottom: '8px'}}>Enterprise AI Assistant</h2>
+            <p style={{maxWidth: '400px', margin: '0 auto', fontSize: '0.875rem'}}>
               Ask me anything about your uploaded documents. I will search the knowledge base and provide answers with direct citations.
             </p>
           </div>
         ) : (
           messages.map((msg) => (
-            <div key={msg.id} className={`flex gap-4 max-w-4xl mx-auto ${msg.role === 'user' ? 'flex-row-reverse' : ''}`}>
+            <div key={msg.id} className={`chat-message ${msg.role}`}>
               {/* Avatar */}
-              <div className={`flex-shrink-0 w-10 h-10 rounded-full flex items-center justify-center ${
-                msg.role === 'user' 
-                  ? 'bg-gradient-to-tr from-accent-primary to-accent-secondary' 
-                  : 'bg-surface border border-border'
-              }`}>
-                {msg.role === 'user' ? <User size={20} color="white" /> : <Bot size={20} className="text-accent-primary" />}
+              <div className={`chat-avatar ${msg.role}`}>
+                {msg.role === 'user' ? <User size={20} /> : <Bot size={20} />}
               </div>
               
               {/* Message Content */}
-              <div className={`flex flex-col ${msg.role === 'user' ? 'items-end' : 'items-start'} max-w-[80%]`}>
-                <div className={`px-5 py-3.5 rounded-2xl ${
-                  msg.role === 'user' 
-                    ? 'bg-panel border border-border/50 text-primary' 
-                    : 'bg-transparent text-primary'
-                }`}>
-                  <div className="prose prose-invert max-w-none text-sm leading-relaxed whitespace-pre-wrap">
+              <div className="chat-content">
+                <div className="chat-bubble animate-fade-in markdown-body">
+                  <ReactMarkdown remarkPlugins={[remarkGfm]}>
                     {msg.content}
-                  </div>
+                  </ReactMarkdown>
                 </div>
 
                 {/* Citations */}
                 {msg.citations && msg.citations.length > 0 && (
-                  <div className="mt-3 w-full space-y-2">
-                    <p className="text-xs font-semibold text-muted ml-1 uppercase tracking-wider">Sources:</p>
-                    <div className="flex flex-wrap gap-2">
+                  <div className="citations-wrapper animate-fade-in">
+                    <div className="citations-title">Sources:</div>
+                    <div className="citations-list">
                       {msg.citations.map((citation, idx) => (
-                        <div key={`${msg.id}-cite-${idx}`} className="relative">
+                        <div key={`${msg.id}-cite-${idx}`} className="citation-item">
                           <button
                             onClick={() => toggleCitation(`${msg.id}-cite-${idx}`)}
-                            className="flex items-center gap-1.5 px-3 py-1.5 bg-panel border border-border rounded-full text-xs text-secondary hover:text-primary hover:border-accent-primary transition-colors"
+                            className="citation-btn"
                           >
-                            <FileText size={12} className="text-accent-primary" />
-                            <span className="truncate max-w-[150px]">{citation.filename}</span>
+                            <FileText size={12} className="icon" />
+                            <span style={{maxWidth: '150px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap'}}>
+                              {citation.filename}
+                            </span>
                             {expandedCitation === `${msg.id}-cite-${idx}` ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
                           </button>
                           
@@ -127,11 +239,9 @@ export function ChatInterface() {
                                 initial={{ opacity: 0, y: 5 }}
                                 animate={{ opacity: 1, y: 0 }}
                                 exit={{ opacity: 0, y: 5 }}
-                                className="absolute left-0 top-full mt-2 w-80 z-20 glass-panel shadow-lg p-4"
+                                className="citation-dropdown glass-panel shadow-lg"
                               >
-                                <p className="text-xs text-muted leading-relaxed font-mono">
-                                  "{citation.snippet}"
-                                </p>
+                                "{citation.snippet}"
                               </motion.div>
                             )}
                           </AnimatePresence>
@@ -146,14 +256,16 @@ export function ChatInterface() {
         )}
         
         {isLoading && (
-          <div className="flex gap-4 max-w-4xl mx-auto">
-            <div className="w-10 h-10 rounded-full bg-surface border border-border flex items-center justify-center">
-              <Bot size={20} className="text-accent-primary animate-pulse" />
+          <div className="chat-message bot animate-fade-in">
+            <div className="chat-avatar bot">
+              <Bot size={20} />
             </div>
-            <div className="px-5 py-3.5 flex space-x-2 items-center">
-              <div className="w-2 h-2 rounded-full bg-accent-primary animate-bounce"></div>
-              <div className="w-2 h-2 rounded-full bg-accent-primary animate-bounce" style={{ animationDelay: '0.2s' }}></div>
-              <div className="w-2 h-2 rounded-full bg-accent-primary animate-bounce" style={{ animationDelay: '0.4s' }}></div>
+            <div className="chat-content">
+              <div className="loading-indicator">
+                <div className="dot"></div>
+                <div className="dot"></div>
+                <div className="dot"></div>
+              </div>
             </div>
           </div>
         )}
@@ -161,20 +273,20 @@ export function ChatInterface() {
       </div>
 
       {/* Input Area */}
-      <div className="p-6 bg-surface/50 backdrop-blur-md border-t border-border">
-        <form onSubmit={handleSubmit} className="max-w-4xl mx-auto relative">
+      <div className="chat-input-area">
+        <form onSubmit={handleSubmit} className="chat-form">
           <input
             type="text"
             value={input}
             onChange={(e) => setInput(e.target.value)}
             placeholder="Ask a question about your documents..."
-            className="input-base pr-12 py-4 rounded-xl shadow-sm bg-panel border-border/60"
+            className="chat-input"
             disabled={isLoading}
           />
           <button
             type="submit"
             disabled={!input.trim() || isLoading}
-            className="absolute right-2 top-1/2 -translate-y-1/2 p-2 bg-accent-gradient rounded-lg text-white hover:opacity-90 disabled:opacity-50 transition-opacity"
+            className="chat-submit-btn"
           >
             <Send size={18} />
           </button>

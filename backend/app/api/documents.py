@@ -11,11 +11,13 @@ from app.core.config import settings
 from app.core.logging import get_logger
 from app.db.database import get_db
 from app.models.document import Document, DocumentStatus
+from app.models.user import User
 from app.schemas.document import (
     DocumentListResponse,
     DocumentResponse,
     DocumentUploadResponse,
 )
+from app.api.deps import get_current_user
 from app.services.document_processor import delete_document_chunks, process_document
 
 router = APIRouter(prefix="/documents", tags=["Documents"])
@@ -46,13 +48,9 @@ async def upload_document(
     background_tasks: BackgroundTasks,
     file: UploadFile = File(..., description="Document file to upload"),
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ) -> DocumentUploadResponse:
-    """Upload a document for processing.
-
-    Accepts PDF, DOCX, TXT, JPG, and PNG files up to 50MB.
-    The file is stored on disk and a database record is created
-    with status 'uploaded'.
-    """
+    """Upload a document for processing."""
     # Validate file type
     ext = _validate_file_type(file)
 
@@ -85,6 +83,7 @@ async def upload_document(
         file_type=ext,
         file_size=file_size,
         document_id=str(file_id),
+        user_id=str(current_user.id),
     )
 
     # Create database record
@@ -96,6 +95,7 @@ async def upload_document(
         file_size=file_size,
         file_path=str(file_path),
         status=DocumentStatus.UPLOADED.value,
+        uploaded_by=current_user.id,
     )
     db.add(document)
     await db.flush()
@@ -124,59 +124,53 @@ async def upload_document(
 
 @router.get("", response_model=DocumentListResponse)
 async def list_documents(
-    skip: int = Query(0, ge=0, description="Number of records to skip"),
-    limit: int = Query(20, ge=1, le=100, description="Max records to return"),
+    skip: int = Query(0, ge=0),
+    limit: int = Query(20, ge=1, le=100),
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ) -> DocumentListResponse:
-    """List all uploaded documents with pagination.
+    """List all documents with pagination."""
+    query = select(Document).where(Document.uploaded_by == current_user.id)
+    
+    # Get total count
+    count_query = select(func.count()).select_from(query.subquery())
+    total_result = await db.execute(count_query)
+    total = total_result.scalar_one()
 
-    Returns documents ordered by upload date (newest first).
-    """
-    # Total count
-    count_result = await db.execute(select(func.count(Document.id)))
-    total = count_result.scalar_one()
+    # Get paginated documents
+    docs_query = query.order_by(Document.created_at.desc()).offset(skip).limit(limit)
+    docs_result = await db.execute(docs_query)
+    documents = docs_result.scalars().all()
 
-    # Paginated query
-    result = await db.execute(
-        select(Document).order_by(Document.created_at.desc()).offset(skip).limit(limit)
-    )
-    documents = result.scalars().all()
-
-    return DocumentListResponse(
-        documents=[DocumentResponse.model_validate(doc) for doc in documents],
-        total=total,
-        skip=skip,
-        limit=limit,
-    )
+    return DocumentListResponse(documents=list(documents), total=total, skip=skip, limit=limit)
 
 
 @router.get("/{document_id}", response_model=DocumentResponse)
 async def get_document(
     document_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ) -> DocumentResponse:
-    """Get details of a specific document by ID."""
-    result = await db.execute(select(Document).where(Document.id == document_id))
+    """Get document details by ID."""
+    result = await db.execute(select(Document).where(Document.id == document_id, Document.uploaded_by == current_user.id))
     document = result.scalar_one_or_none()
-
+    
     if not document:
         raise HTTPException(status_code=404, detail="Document not found")
-
-    return DocumentResponse.model_validate(document)
+        
+    return document
 
 
 @router.delete("/{document_id}", status_code=204)
 async def delete_document(
     document_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ) -> None:
-    """Delete a document and remove its file from disk.
-
-    Also cascades to delete any associated chunks.
-    """
-    result = await db.execute(select(Document).where(Document.id == document_id))
+    """Delete a document and its chunks."""
+    result = await db.execute(select(Document).where(Document.id == document_id, Document.uploaded_by == current_user.id))
     document = result.scalar_one_or_none()
-
+    
     if not document:
         raise HTTPException(status_code=404, detail="Document not found")
 

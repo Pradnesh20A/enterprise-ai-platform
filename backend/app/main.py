@@ -9,6 +9,9 @@ from app.api.documents import router as documents_router
 from app.api.health import router as health_router
 from app.api.search import router as search_router
 from app.api.qa import router as qa_router
+from app.api.auth import router as auth_router
+from app.api.conversations import router as conversations_router
+from app.api.admin import router as admin_router
 from app.core.config import settings
 from app.core.logging import setup_logging
 
@@ -44,6 +47,9 @@ app.add_middleware(
 
 # Mount routers
 app.include_router(health_router)
+app.include_router(auth_router, prefix=settings.API_PREFIX)
 app.include_router(documents_router, prefix=settings.API_PREFIX)
 app.include_router(search_router, prefix=settings.API_PREFIX)
 app.include_router(qa_router, prefix=settings.API_PREFIX)
+app.include_router(conversations_router, prefix=settings.API_PREFIX)
+app.include_router(admin_router, prefix=settings.API_PREFIX)

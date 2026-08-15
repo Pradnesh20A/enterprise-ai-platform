@@ -1,9 +1,10 @@
 import React, { useRef, useState } from 'react';
 import { Upload, FileText, Trash2, CheckCircle, AlertCircle, Clock } from 'lucide-react';
-import { api, Document } from '../api/client';
+import { api } from '../api/client';
+import type { DocumentItem } from '../api/client';
 
 interface Props {
-  documents: Document[];
+  documents: DocumentItem[];
   onDocumentsChanged: () => void;
 }
 
@@ -54,25 +55,25 @@ export function DocumentManager({ documents, onDocumentsChanged }: Props) {
   const renderStatus = (status: string) => {
     switch (status) {
       case 'COMPLETED':
-        return <span className="badge badge-success"><CheckCircle size={12} className="mr-1" /> Ready</span>;
+        return <span className="badge badge-success"><CheckCircle size={12} style={{marginRight: '4px'}} /> Ready</span>;
       case 'FAILED':
-        return <span className="badge badge-danger"><AlertCircle size={12} className="mr-1" /> Failed</span>;
+        return <span className="badge badge-danger"><AlertCircle size={12} style={{marginRight: '4px'}} /> Failed</span>;
       default:
-        return <span className="badge badge-warning"><Clock size={12} className="mr-1" /> {status}</span>;
+        return <span className="badge badge-warning"><Clock size={12} style={{marginRight: '4px'}} /> {status}</span>;
     }
   };
 
   return (
-    <div className="h-full flex flex-col">
-      <div className="mb-6">
-        <h2 className="text-xl font-semibold mb-1">Knowledge Base</h2>
-        <p className="text-sm text-secondary">Manage your enterprise documents</p>
+    <div className="doc-section">
+      <div>
+        <h2>Knowledge Base</h2>
+        <p className="subtitle">Manage your enterprise documents</p>
       </div>
 
       <button 
         onClick={handleUploadClick}
         disabled={isUploading}
-        className="btn-primary w-full mb-6 py-3"
+        className="btn-primary"
       >
         <Upload size={18} />
         {isUploading ? 'Uploading...' : 'Upload Document'}
@@ -82,47 +83,45 @@ export function DocumentManager({ documents, onDocumentsChanged }: Props) {
         type="file" 
         ref={fileInputRef} 
         onChange={handleFileChange} 
-        className="hidden" 
+        className="hidden-input" 
         accept=".pdf,.txt,.docx"
       />
 
-      <div className="flex-1 overflow-y-auto pr-2">
+      <div className="doc-list">
         {documents.length === 0 ? (
-          <div className="text-center py-10 text-muted">
-            <FileText size={48} className="mx-auto mb-3 opacity-20" />
+          <div style={{textAlign: 'center', padding: '40px 0', color: 'var(--text-muted)'}}>
+            <FileText size={48} style={{margin: '0 auto 12px auto', opacity: 0.2}} />
             <p>No documents uploaded yet.</p>
           </div>
         ) : (
-          <div className="space-y-3">
-            {documents.map((doc) => (
-              <div key={doc.id} className="glass-panel group relative">
-                <div className="flex items-start justify-between">
-                  <div className="flex items-start space-x-3 overflow-hidden">
-                    <div className="mt-1 flex-shrink-0 text-accent-primary">
-                      <FileText size={20} />
+          documents.map((doc) => (
+            <div key={doc.id} className="glass-panel">
+              <div className="doc-item-header">
+                <div className="doc-item-info">
+                  <div className="doc-icon">
+                    <FileText size={20} />
+                  </div>
+                  <div className="doc-meta">
+                    <div className="doc-filename" title={doc.filename}>
+                      {doc.filename}
                     </div>
-                    <div className="min-w-0">
-                      <h4 className="text-sm font-medium truncate" title={doc.filename}>
-                        {doc.filename}
-                      </h4>
-                      <div className="text-xs text-muted mt-1 flex items-center space-x-2">
-                        <span>{formatFileSize(doc.file_size)}</span>
-                        <span>•</span>
-                        {renderStatus(doc.status)}
-                      </div>
+                    <div className="doc-details">
+                      <span>{formatFileSize(doc.file_size)}</span>
+                      <span>•</span>
+                      {renderStatus(doc.status)}
                     </div>
                   </div>
-                  <button 
-                    onClick={() => handleDelete(doc.id)}
-                    className="text-muted hover:text-danger opacity-0 group-hover:opacity-100 transition-opacity p-1"
-                    title="Delete document"
-                  >
-                    <Trash2 size={16} />
-                  </button>
                 </div>
+                <button 
+                  onClick={() => handleDelete(doc.id)}
+                  className="btn-delete"
+                  title="Delete document"
+                >
+                  <Trash2 size={16} />
+                </button>
               </div>
-            ))}
-          </div>
+            </div>
+          ))
         )}
       </div>
     </div>
