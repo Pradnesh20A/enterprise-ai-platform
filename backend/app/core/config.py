@@ -28,8 +28,11 @@ class Settings(BaseSettings):
     # Vector Store (Milestone 2)
     VECTOR_STORE_DIR: str = "data/vector_store"
 
+    # LLM Settings (Milestone 3)
+    GEMINI_API_KEY: str | None = None
+
     model_config = {
-        "env_file": ".env",
+        "env_file": "../.env",
         "env_file_encoding": "utf-8",
         "extra": "ignore",
     }

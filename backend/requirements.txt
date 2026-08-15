@@ -25,3 +25,4 @@ PyMuPDF>=1.23.0
 sentence-transformers>=2.2.0
 faiss-cpu>=1.7.4
 langchain-text-splitters>=0.0.1
+google-genai>=0.2.0
