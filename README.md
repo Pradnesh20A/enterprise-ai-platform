@@ -100,10 +100,10 @@ enterprise-ai-platform/
 ## Roadmap
 
 - [x] **Milestone 1** — FastAPI + PostgreSQL + Document Upload
-- [ ] **Milestone 2** — Document Processing → Embeddings → FAISS → Semantic Search
-- [ ] **Milestone 3** — LLM → RAG → Citations → LangChain
-- [ ] **Milestone 4** — Summarization → Extraction → Agents → Function Calling
-- [ ] **Milestone 5** — React UI → Auth → Evaluation → Docker → CI/CD
+- [x] **Milestone 2** — Document Processing → Embeddings → FAISS → Semantic Search
+- [x] **Milestone 3** — LLM → RAG → Citations → LangChain
+- [x] **Milestone 4** — Summarization → Extraction → Agents → Function Calling
+- [x] **Milestone 5** — React UI → Auth → Evaluation → Docker → CI/CD
 
 ## License
 
